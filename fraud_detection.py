@@ -343,17 +343,29 @@ X_test_sample = X_test.sample(n=min(500, len(X_test)), random_state=42)
 explainer = shap.TreeExplainer(best_model)
 shap_values = explainer.shap_values(X_test_sample)
 
-# Handle multi-output SHAP (Random Forest returns list)
+# Handle multi-output SHAP shapes across SHAP versions:
+# - Older versions: list of arrays, one per class -> shap_values[1] = fraud class
+# - Newer versions: single 3D array (n_samples, n_features, n_classes) -> index last axis
+# - Binary XGBoost: single 2D array (n_samples, n_features) -> use as-is
 if isinstance(shap_values, list):
     shap_vals = shap_values[1]  # class 1 (fraud)
+elif isinstance(shap_values, np.ndarray) and shap_values.ndim == 3:
+    shap_vals = shap_values[:, :, 1]  # class 1 (fraud) along last axis
 else:
     shap_vals = shap_values
+
+# Sanity check: shap values must match the feature matrix shape exactly
+assert shap_vals.shape == X_test_sample.shape, (
+    f"SHAP values shape {shap_vals.shape} does not match "
+    f"X_test_sample shape {X_test_sample.shape}"
+)
 
 # SHAP Summary Plot
 plt.figure(figsize=(10, 8))
 shap.summary_plot(shap_vals, X_test_sample, plot_type="bar",
                   max_display=15, show=False)
-plt.title(f'SHAP Feature Importance — {best_model_name}', fontweight='bold')
+fig = plt.gcf()
+fig.suptitle(f'SHAP Feature Importance — {best_model_name}', fontweight='bold', y=1.02)
 plt.tight_layout()
 plt.savefig('shap_importance.png', dpi=150, bbox_inches='tight')
 plt.close()
@@ -362,7 +374,8 @@ print("SHAP importance chart saved: shap_importance.png")
 # SHAP Beeswarm
 plt.figure(figsize=(10, 8))
 shap.summary_plot(shap_vals, X_test_sample, max_display=15, show=False)
-plt.title(f'SHAP Summary (Beeswarm) — {best_model_name}', fontweight='bold')
+fig = plt.gcf()
+fig.suptitle(f'SHAP Summary (Beeswarm) — {best_model_name}', fontweight='bold', y=1.02)
 plt.tight_layout()
 plt.savefig('shap_beeswarm.png', dpi=150, bbox_inches='tight')
 plt.close()
